@@ -1,0 +1,25 @@
+[package]
+name = "lib-sys"
+version = "0.1.0"
+edition = "2021"
+authors = ["Chinmay Vivek"]
+build = "build/build.rs"
+description = """
+Rust bindings for lib-swiss (the Swiss Ephemeris).
+
+Uses bindgen to generate complete and correct bindings at compile time.
+"""
+readme = "../README.md"
+links = "lib-swiss"
+
+[lib]
+name = "lib_sys"
+
+[dependencies]
+
+
+
+
+[build-dependencies]
+bindgen = "0.59.1"
+cc = "1.0.70"

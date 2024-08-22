@@ -1,0 +1,15 @@
+[package]
+name = "lib-swiss"
+version = "0.1.0"
+edition = "2021"
+authors = ["Chinmay Vivek"]
+
+[lib]
+name = "lib_swiss"
+
+[dependencies]
+chrono = "0.4.38"
+
+[dependencies.lib-sys]
+version = "0.1.0"
+path = "../lib-sys"
