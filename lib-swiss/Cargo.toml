@@ -1,8 +1,15 @@
 [package]
-name = "lib-swiss"
-version = "0.1.0"
+name = "ephem-rs"
+version = "0.0.1"
 edition = "2021"
 authors = ["Chinmay Vivek"]
+description = "Rust bindings for the Swiss Ephemeris library for precise astronomical calculations."
+license = "MIT or Apache-2.0"
+homepage = "https://github.com/chinmayvivek/ephem-rs"
+repository = "https://github.com/chinmayvivek/ephem-rs"
+categories = ["science"]
+keywords = ["ephemeris", "astronomy", "astronomical", "calculation"]
+readme = "README.md"
 
 [lib]
 name = "lib_swiss"
