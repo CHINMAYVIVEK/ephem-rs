@@ -1,5 +1,7 @@
-
-
 [workspace]
-members = ["lib-sys", "lib-swiss"]
+members = [
+    "lib-sys", 
+    "lib-swiss"
+]
+
 resolver = "2"

@@ -1,0 +1,11 @@
+[package]
+name = "ephem_rs_test_suite"
+version = "0.0.0"
+authors = ["Chinmay Vivek"]
+edition = "2021"
+publish = false
+
+
+
+[dependencies]
+serde = { path = "../lib-swiss" }
