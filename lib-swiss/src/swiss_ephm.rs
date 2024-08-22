@@ -1,22 +1,30 @@
-use chrono::{DateTime, Datelike, Timelike, Utc};
+//! `ephem-rs` provides Rust bindings for the Swiss Ephemeris, allowing for high-precision
+//! astrological and astronomical calculations. It includes tools to handle ephemeris data,
+//! planetary positions, and other celestial calculations.
+//!
+//! This module allows you to set the ephemeris path, perform calculations, and manage ephemeris
+//! files, making it ideal for building applications in astrology or astronomy.
 
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use lib_sys::{
     swe_calc_ut, swe_close, swe_get_current_file_data, swe_get_library_path, swe_get_planet_name,
     swe_julday, swe_set_ephe_path, swe_set_jpl_file, swe_version, SE_GREG_CAL,
 };
 use std::{env, fmt, path::Path, ptr::addr_of, ptr::null_mut, str, sync::Once};
 
+/// Maximum string length used in ephemeris path and other string-based operations.
 const MAXCH: usize = 256;
+
+/// Singleton pattern for setting the ephemeris path.
 static SET_EPHE_PATH: Once = Once::new();
+/// Stores the ephemeris path after it has been set.
 static mut EPHE_PATH: String = String::new();
+/// Singleton pattern for closing the Swiss Ephemeris.
 static CLOSED: Once = Once::new();
 
-// macro for getting the name of the current function.
-// creates a new function f inside of the current function,
-// and gets its type_name, and then strips the last three
-// chars (which would be "::f") to get the module path and
-// name of the current function.
-// Adapted from https://stackoverflow.com/questions/38088067/equivalent-of-func-or-function-in-rust
+/// Macro to get the name of the current function.
+///
+/// This is helpful for debugging and error messages.
 macro_rules! function {
     () => {{
         fn f() {}
@@ -28,26 +36,35 @@ macro_rules! function {
     }};
 }
 
+/// Ensures the Swiss Ephemeris is ready before invoking any functions.
+///
+/// This function asserts that the ephemeris path has been set and that the ephemeris files are not closed.
 fn assert_ephe_ready(fn_name: &str) {
     assert!(
         !CLOSED.is_completed(),
-        "Invoked libswe function {} after closing the ephemeris files.",
+        "Attempted to call `{}` after the ephemeris files were closed.",
         fn_name
     );
     assert!(
         SET_EPHE_PATH.is_completed(),
-        "Invoked libswe function {} before calling set_ephe_path.",
+        "Attempted to call `{}` before setting the ephemeris path.",
         fn_name
     );
 }
 
+/// Stores information about the current ephemeris file.
 pub struct FileData {
+    /// Path to the ephemeris file.
     pub filepath: String,
+    /// Start date of the ephemeris file.
     pub start_date: f64,
+    /// End date of the ephemeris file.
     pub end_date: f64,
+    /// Ephemeris number (denum) used.
     pub ephemeris_num: i32,
 }
 
+/// Represents celestial bodies that can be used in calculations.
 #[repr(i32)]
 #[derive(PartialEq, Copy, Clone)]
 pub enum Body {
@@ -75,6 +92,7 @@ pub enum Body {
     Vesta = 20,
 }
 
+/// Calculation flags that define the precision and output format for celestial body positions.
 #[repr(i32)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Flag {
@@ -83,29 +101,20 @@ pub enum Flag {
     MoshierEphemeris = 4,
     HeliocentricPos = 8,
     TruePos = 16,
-    NoPrecession = 32,
-    NoNutation = 64,
     HighPrecSpeed = 256,
-    NoGravDeflection = 512,
-    NoAnnualAbberation = 1024,
-    AstrometricPos = 1536,
-    EquatorialPos = 2048,
     CartesianCoords = 4096,
-    Radians = 8192,
     BarycentricPos = 16384,
-    TopocentricPos = 32 * 1024,
-    Sideral = 64 * 1024,
-    ICRS = 128 * 1024,
-    JPLHorizons = 256 * 1024,
-    JPLHorizonsApprox = 512 * 1024,
-    CenterOfBody = 1024 * 1024,
 }
 
+/// Result for a celestial body calculation, including both position and velocity data.
 pub struct BodyResult {
+    /// Position in space (x, y, z) of the celestial body.
     pub pos: Vec<f64>,
+    /// Velocity in space (vx, vy, vz) of the celestial body.
     pub vel: Vec<f64>,
 }
 
+/// Result for an ecliptic and nutation calculation.
 pub struct EclipticAndNutationResult {
     pub ecliptic_true_obliquity: f64,
     pub ecliptic_mean_obliquity: f64,
@@ -113,14 +122,18 @@ pub struct EclipticAndNutationResult {
     pub nutation_obliquity: f64,
 }
 
+/// Wrapper enum for calculation results.
 pub enum CalculationResult {
     Body(BodyResult),
     EclipticAndNutation(EclipticAndNutationResult),
 }
 
+/// Represents an error occurring during celestial calculations.
 #[derive(Debug)]
 pub struct CalculationError {
+    /// Error code returned by the Swiss Ephemeris library.
     code: i32,
+    /// Error message returned by the Swiss Ephemeris library.
     msg: String,
 }
 
@@ -128,57 +141,60 @@ impl fmt::Display for CalculationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "CalculationError {{ code: {} message: {} }}",
+            "CalculationError {{ code: {}, message: {} }}",
             self.code, self.msg
         )
     }
 }
 
+/// Sets the ephemeris path for the Swiss Ephemeris.
+///
+/// This function should be called before any ephemeris calculations.
+/// The path can be set manually or automatically through the `SE_EPHE_PATH` environment variable.
 pub fn set_ephe_path(path: Option<&str>) {
     assert!(!CLOSED.is_completed());
     SET_EPHE_PATH.call_once(|| {
-        let null = null_mut();
         let env_ephe_path = env::var("SE_EPHE_PATH").ok();
         match env_ephe_path {
-            Some(_) => unsafe { swe_set_ephe_path(null) },
+            Some(_) => unsafe { swe_set_ephe_path(null_mut()) },
             None => match path {
                 Some(path_str) => {
-                    assert!(path_str.len() < MAXCH);
-
                     let path_p = Path::new(path_str);
                     assert!(path_p.is_dir());
-
                     let mut mpath = path_str.to_owned();
                     unsafe {
                         swe_set_ephe_path(mpath.as_mut_ptr() as *mut i8);
                         EPHE_PATH = mpath;
                     }
                 }
-                None => unsafe { swe_set_ephe_path(null) },
+                None => unsafe { swe_set_ephe_path(null_mut()) },
             },
         }
-    })
+    });
 }
 
+/// Closes the Swiss Ephemeris files.
+///
+/// Once this function is called, no further calculations can be performed until the ephemeris path is reset.
 pub fn close() {
     CLOSED.call_once(|| unsafe { swe_close() })
 }
 
+/// Retrieves the current ephemeris path.
+///
+/// This function returns the ephemeris path set by `set_ephe_path`.
 pub fn get_ephe_path() -> &'static str {
     unsafe { addr_of!(EPHE_PATH).as_ref().unwrap() }
 }
 
+/// Sets the JPL ephemeris file for use in calculations.
+///
+/// The file should exist at the provided path or in the ephemeris directory.
 pub fn set_jpl_file(filename: &str) {
     assert_ephe_ready(function!());
 
-    let env_ephe_path = env::var("SE_EPHE_PATH").ok();
-    assert!(filename.len() < MAXCH);
     let epath = get_ephe_path();
-
-    let path = match env_ephe_path {
-        Some(path_str) => Path::new(&path_str).join(filename),
-        None => Path::new(epath).join(filename),
-    };
+    let path = Path::new(epath).join(filename);
     assert!(path.is_file());
     let mut mfilename = filename.to_owned();
     unsafe {
@@ -186,6 +202,7 @@ pub fn set_jpl_file(filename: &str) {
     }
 }
 
+/// Retrieves the Swiss Ephemeris version as a string.
 pub fn version() -> String {
     assert_ephe_ready(function!());
     let mut swe_vers_i: [u8; MAXCH] = [0; MAXCH];
@@ -195,6 +212,7 @@ pub fn version() -> String {
     String::from(str::from_utf8(&swe_vers_i).unwrap())
 }
 
+/// Retrieves the path to the currently loaded Swiss Ephemeris library.
 pub fn get_library_path() -> String {
     assert_ephe_ready(function!());
     let mut swe_lp_i: [u8; MAXCH] = [0; MAXCH];
@@ -204,6 +222,7 @@ pub fn get_library_path() -> String {
     String::from(str::from_utf8(&swe_lp_i).unwrap())
 }
 
+/// Retrieves data about the currently loaded ephemeris file.
 pub fn get_current_file_data(ifno: i32) -> FileData {
     assert_ephe_ready(function!());
     let mut tfstart: f64 = 0.0;
@@ -220,13 +239,9 @@ pub fn get_current_file_data(ifno: i32) -> FileData {
         )
     } as *const u8;
     let mut fp_p = fp_i;
-    let term = b'\0';
-    while unsafe { *fp_p } != term {
+    while unsafe { *fp_p } != b'\0' {
         unsafe {
-            let i = *fp_p;
-            let i_slice = &[i as u8];
-            let s = str::from_utf8(i_slice).unwrap();
-            filepath.push_str(s);
+            filepath.push(*fp_p as char);
             fp_p = fp_p.add(1);
         }
     }
@@ -239,63 +254,72 @@ pub fn get_current_file_data(ifno: i32) -> FileData {
     }
 }
 
-pub fn calc_ut(
-    julian_day_ut: f64,
-    body: Body,
-    flag_set: &[Flag],
-) -> Result<CalculationResult, CalculationError> {
-    let mut flags: i32 = 0;
-    for f in flag_set.iter() {
-        flags = flags | *f as i32;
-    }
-    let mut results: [f64; 6] = [0.0; 6];
-    let mut error_i: [u8; MAXCH] = [0; MAXCH];
-    let code = unsafe {
+/// Calculates celestial body positions based on Universal Time.
+///
+/// This function takes a Julian day in Universal Time (UT), a celestial `Body`, and a set of `Flag`s
+/// to determine the precision and format of the output.
+///
+/// It returns a `BodyResult` containing the calculated position and velocity of the celestial body.
+pub fn calculate_ut(jd: f64, body: Body, flags: Flag) -> Result<BodyResult, CalculationError> {
+    assert_ephe_ready(function!());
+
+    let mut rsmi = vec![0f64; 6];
+    let mut serr = vec![0u8; MAXCH];
+    let swe_err = unsafe {
         swe_calc_ut(
-            julian_day_ut,
+            jd,
             body as i32,
-            flags,
-            &mut results as *mut f64,
-            error_i.as_mut_ptr() as *mut i8,
+            flags as i32,
+            rsmi.as_mut_ptr() as *mut f64,
+            serr.as_mut_ptr() as *mut i8,
         )
     };
-    let msg = String::from(str::from_utf8(&error_i).unwrap());
-    if code < 0 {
-        Err(CalculationError { code, msg })
-    } else {
-        match body {
-            Body::EclipticNutation => Ok(CalculationResult::EclipticAndNutation(
-                EclipticAndNutationResult {
-                    ecliptic_true_obliquity: results[0],
-                    ecliptic_mean_obliquity: results[1],
-                    nutation_lng: results[2],
-                    nutation_obliquity: results[3],
-                },
-            )),
-            _ => Ok(CalculationResult::Body(BodyResult {
-                pos: vec![results[0], results[1], results[2]],
-                vel: vec![results[3], results[4], results[5]],
-            })),
-        }
+    let err_message = str::from_utf8(&serr)
+        .unwrap()
+        .trim_end_matches(char::from(0));
+
+    match swe_err {
+        0 => Ok(BodyResult {
+            pos: rsmi[..3].to_vec(),
+            vel: rsmi[3..6].to_vec(),
+        }),
+        _ => Err(CalculationError {
+            code: swe_err,
+            msg: err_message.to_string(),
+        }),
     }
 }
 
-pub fn julday(dt: DateTime<Utc>) -> f64 {
-    // NaiveDateTime because julday assumes UTC.
+/// Converts a given Universal Time (UTC) date into Julian Day.
+///
+/// Julian Day is the continuous count of days since the beginning of the Julian Period.
+/// This function uses the Swiss Ephemeris to convert a `DateTime<Utc>` into a Julian Day.
+pub fn utc_to_julian_day(utc: DateTime<Utc>) -> f64 {
+    assert_ephe_ready(function!());
+
     unsafe {
         swe_julday(
-            dt.year(),
-            dt.month() as i32,
-            dt.day() as i32,
-            dt.hour().into(),
+            utc.year(),
+            utc.month() as i32,
+            utc.day() as i32,
+            utc.hour() as f64
+                + utc.minute() as f64 / 60.0
+                + utc.second() as f64 / 3600.0
+                + utc.timestamp_subsec_micros() as f64 / 3600_000_000.0,
             SE_GREG_CAL as i32,
         )
     }
 }
 
+/// Retrieves the name of a celestial body based on its ID.
+///
+/// This function is useful for verifying body identification or for display purposes.
 pub fn get_planet_name(body: Body) -> String {
-    let mut name: [u8; MAXCH] = [0; MAXCH];
+    assert_ephe_ready(function!());
 
-    unsafe { swe_get_planet_name(body as i32, name.as_mut_ptr() as *mut i8) };
-    String::from_utf8(Vec::from(name)).unwrap()
+    let mut swe_name_i: [u8; MAXCH] = [0; MAXCH];
+    unsafe {
+        swe_get_planet_name(body as i32, swe_name_i.as_mut_ptr() as *mut i8);
+    }
+    String::from(str::from_utf8(&swe_name_i).unwrap())
 }

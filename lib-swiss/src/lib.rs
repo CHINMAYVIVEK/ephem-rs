@@ -15,13 +15,22 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+/// The `swiss_ephm` module provides utilities to interface with the Swiss Ephemeris,
+/// allowing for astrological and astronomical calculations based on high-precision data.
 pub mod swiss_ephm;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Tests that the `set_ephe_path` function in the `swiss_ephm` module works correctly.
+    ///
+    /// This test sets the ephemeris path to `None`, which should result in the default
+    /// path being used (often the current directory or a predefined location).
     #[test]
-    fn it_works() {
+    fn test_set_ephe_path_with_none() {
+        // Setting the ephemeris path to `None`. This should configure the Swiss Ephemeris
+        // to use the default ephemeris path.
         swiss_ephm::set_ephe_path(None);
     }
 }
