@@ -1,18 +1,10 @@
-use chrono::DateTime;
-use chrono::Datelike;
-use chrono::Timelike;
-use chrono::Utc;
-use lib_sys::swe_get_planet_name;
+use chrono::{DateTime, Datelike, Timelike, Utc};
+
 use lib_sys::{
-    swe_calc_ut, swe_close, swe_get_current_file_data, swe_get_library_path, swe_julday,
-    swe_set_ephe_path, swe_set_jpl_file, swe_version, SE_GREG_CAL,
+    swe_calc_ut, swe_close, swe_get_current_file_data, swe_get_library_path, swe_get_planet_name,
+    swe_julday, swe_set_ephe_path, swe_set_jpl_file, swe_version, SE_GREG_CAL,
 };
-use std::env;
-use std::fmt;
-use std::ptr::addr_of;
-use std::str;
-use std::sync::Once;
-use std::{path::Path, ptr::null_mut};
+use std::{env, fmt, path::Path, ptr::addr_of, ptr::null_mut, str, sync::Once};
 
 const MAXCH: usize = 256;
 static SET_EPHE_PATH: Once = Once::new();
@@ -173,7 +165,7 @@ pub fn close() {
 }
 
 pub fn get_ephe_path() -> &'static str {
-    unsafe {addr_of!(EPHE_PATH).as_ref().unwrap()}
+    unsafe { addr_of!(EPHE_PATH).as_ref().unwrap() }
 }
 
 pub fn set_jpl_file(filename: &str) {
@@ -185,8 +177,7 @@ pub fn set_jpl_file(filename: &str) {
 
     let path = match env_ephe_path {
         Some(path_str) => Path::new(&path_str).join(filename),
-        None =>  Path::new(epath).join(filename) ,
-
+        None => Path::new(epath).join(filename),
     };
     assert!(path.is_file());
     let mut mfilename = filename.to_owned();
