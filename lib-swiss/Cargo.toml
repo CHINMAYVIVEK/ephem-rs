@@ -18,5 +18,5 @@ name = "lib_swiss"
 chrono = "0.4.38"
 
 [dependencies.lib-sys]
-version = "0.1.0"
+version = "0.0.1"
 path = "../lib-sys"
